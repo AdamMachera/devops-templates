@@ -1,0 +1,12 @@
+parameters:
+  variableName:
+  variableValue:
+  folder:
+
+steps:
+- bash: |
+    echo 'store variable value if file ${{ parameters.folder }}/${{ parameters.variableName }}'
+    echo ${{ parameters.variableValue }}
+    echo ${{ parameters.variableValue }} > ${{ parameters.folder }}/${{ parameters.variableName }}
+  name: store
+  displayName: Store variable ${{ parameters.variableName }}

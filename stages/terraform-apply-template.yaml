@@ -1,0 +1,77 @@
+parameters:
+- name: name
+  type: string
+- name: env
+  type: string
+- name: terraformServiceConnection
+  type: string
+- name: terraformEnvVariables
+  type: object
+  default: {}
+- name: dependsOn
+  type: object
+  default: []
+- name: pool
+  type: string
+  default: ''
+- name: releaseFromFeatureBranch
+  type: boolean
+  default: false
+- name: preBuildSteps
+  type: object
+  default: []
+- name: postBuildSteps
+  type: object
+  default: []
+
+stages:
+- stage: TerraformApply_${{ replace(parameters.name, '-', '_') }}_${{ parameters.env }}
+  ${{ if eq(parameters.releaseFromFeatureBranch, true) }}:  
+    condition: eq(dependencies.TerraformPlan_${{ replace(parameters.name, '-', '_') }}_${{ parameters.env }}.outputs['${{ replace(parameters.name, '-', '_') }}_tfplan.terraformPlan.changesPresent'], 'True')
+  ${{ else }}:
+    condition: and(eq(dependencies.TerraformPlan_${{ replace(parameters.name, '-', '_') }}_${{ parameters.env }}.outputs['${{ replace(parameters.name, '-', '_') }}_tfplan.terraformPlan.changesPresent'], 'True'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  ${{ if not(eq(parameters.pool, '')) }}:
+    pool: ${{ parameters.pool }}
+  variables:
+  # Settings for terraform state are placed inside Azure Devops -> Pipelines -> Library -> name-env e.g. someapp-dev
+  - group: ${{ parameters.name }}-${{ parameters.env }}
+  dependsOn: ${{ parameters.dependsOn }}
+  displayName: ${{ parameters.env }} apply
+  jobs:
+  - deployment: ${{ replace(parameters.name, '-', '_') }}_tfapply
+    environment: ${{ parameters.env }}
+    strategy:
+        runOnce:
+          deploy:
+            steps:
+            - ${{ parameters.preBuildSteps }}
+
+            - template: ../steps/restore-variable.yaml
+              parameters:
+                variableName: appversion
+                folder: $(Pipeline.Workspace)/${{ parameters.env }}_tfplan_$(System.StageAttempt)
+
+            - task: TerraformInstaller@1
+              name: installTerraform
+              displayName: Install Terraform $(terraformVersion)
+              inputs:
+                terraformVersion: $(terraformVersion)
+            
+            - template: ../steps/terraform-extract-plan.yaml
+              parameters:
+                destinationFolder: ./tfplan/
+                artifactName: ${{ parameters.env }}_tfplan_$(System.StageAttempt)
+                version: $(restore.appversion)
+
+            - task: TerraformTaskV4@4
+              name: terraformApply
+              displayName: "Apply Terraform Plan"
+              env: ${{ parameters.terraformEnvVariables }}
+              inputs:
+                provider: 'azurerm'
+                environmentServiceNameAzureRM: ${{ parameters.terraformServiceConnection }}
+                workingDirectory: ./tfplan/
+                command: 'apply'
+                commandOptions: '-input=false $(restore.appversion)_${{ parameters.env }}.tfplan'
+
+            - ${{ parameters.postBuildSteps }}
