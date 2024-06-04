@@ -1,0 +1,40 @@
+steps:
+- powershell: |
+    $hash="$(longCommitHash)"
+    $hash=$hash.substring(0,7)
+    $month="$(buildMonth)"
+    if ($month.StartsWith("0")) {
+      $month = $month[1]
+    }
+
+    $baseVersion="$(buildYear).$($month).$(buildDay)-$(Build.BuildId)-$($hash)"
+    $version=""
+
+    if ('$(isMain)' -eq 'True') {
+      $version="$($baseVersion)-main"
+    }
+    elseif ('$(isDevelop)' -eq 'True') {
+      $version="$($baseVersion)-dev"
+    }
+    elseif ('$(isRelease)' -eq 'True') {
+      $version="$($baseVersion)-$(Build.SourceBranchName)"
+    }
+    elseif ('$(isPR)' -eq 'True') {
+      $prSufix="$(prSourceBranch)"
+      $sourceBranch = "$(prSourceBranch)"
+      if ($sourceBranch -like "*/*") {
+          $prSufix = ($sourceBranch -split '/')[1]
+      }
+      $version="$($baseVersion)-$($prSufix)"
+    } else {
+      $version="$($baseVersion)-$(Build.SourceBranchName)"
+    }
+
+    $version=$version.replace("+","-").replace("/","-").replace("_","-")
+    $versionDashed=$version.replace("-","_")
+    Write-Host "##vso[task.setvariable variable=version;isOutput=true]$version"
+    Write-Host "##vso[task.setvariable variable=versionDashed;isOutput=true]$versionDashed"
+    Write-Host "version $($version)"
+    Write-Host "versionDashed $($versionDashed)"
+  name: getversion
+  displayName: Assemble version

@@ -1,0 +1,12 @@
+parameters:
+  variableName:
+  folder:
+
+steps:
+
+- script: |
+    variableValue=$(cat ${{ parameters.folder }}/${{ parameters.variableName }})
+    echo $variableValue
+    echo "##vso[task.setvariable variable=${{ parameters.variableName }};isOutput=true]$variableValue"
+  name: restore
+  displayName: Restore variable ${{ parameters.variableName }}

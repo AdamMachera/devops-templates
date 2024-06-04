@@ -1,0 +1,40 @@
+parameters:
+  version:
+
+steps:
+- script: |
+    echo "Setting env tag"
+    isPR=$(isPR)
+    isFeature=$(isFeature)
+    isDevelop=$(isDevelop)
+    isRelease=$(isRelease)
+    isMain=$(isMain)
+    echo "isPR: $isPR"
+    echo "isFeature: $isFeature"
+    echo "isDevelop: $isDevelop"
+    echo "isRelease: $isRelease"
+    echo "isMain: $isMain"
+
+    if [ "$isPR" == "True" ]; then
+      echo "##vso[build.addbuildtag]PR"
+    fi
+
+    if [ "$isFeature" == "True" ] || [ "$isDevelop" = "True" ]; then
+      echo "##vso[build.addbuildtag]tst"
+    fi
+
+    if [ "$isRelease" == "True" ]; then
+      echo "##vso[build.addbuildtag]acc"
+    fi
+
+    if [ "$isMain" == "True" ]; then
+      echo "##vso[build.addbuildtag]prd"
+    fi
+
+    versionValue=${{ parameters.version }}
+    echo "Setting build.addbuildtag to $versionValue"
+    echo "##vso[build.addbuildtag]$versionValue"
+    
+    echo "Setting build.updatebuildnumber to $versionValue"
+    echo "##vso[build.updatebuildnumber]$versionValue"
+  displayName: Update build data

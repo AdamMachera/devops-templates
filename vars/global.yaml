@@ -1,0 +1,21 @@
+variables:
+  isMain:              ${{ or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/master')) }}
+  isDevelop:           ${{ eq(variables['Build.SourceBranch'], 'refs/heads/develop') }}
+  isRelease:           ${{ or(startsWith(variables['Build.SourceBranch'], 'refs/heads/release'), startsWith(variables['System.PullRequest.SourceBranch'], 'release')) }}
+  isPR:                ${{ eq(variables['Build.Reason'], 'PullRequest') }}
+  isFeature:           ${{ or(startsWith(variables['Build.SourceBranch'], 'refs/heads/feature'), startsWith(variables['Build.SourceBranch'], 'refs/heads/hotfix'), startsWith(variables['Build.SourceBranch'], 'refs/heads/bugfix')) }}
+  isTag:               ${{ startsWith(variables['Build.SourceBranch'], 'refs/tags/v') }}
+  isFork:              ${{ eq(variables['System.PullRequest.IsFork'], 'True') }}
+  isTrustedCode:       ${{ eq(variables.isFork, 'False') }}
+  isScheduled:         ${{ eq(variables['Build.Reason'], 'Schedule') }}
+  isTrustedCI:         ${{ and( eq(variables.isFork,'False'), eq(variables.isPR,'False'), eq(variables.isScheduled,'False') ) }}
+  branch:              $(Build.SourceBranch)
+  branchName:          $(Build.SourceBranchName)
+  prSourceBranch:      $(System.PullRequest.SourceBranch)
+  targetBranch:        $(System.PullRequest.TargetBranch)
+  isTargetBranchMain:  ${{ or(eq(variables.targetBranch, 'main'), eq(variables.targetBranch, 'master')) }}
+  longCommitHash:      $(Build.SourceVersion)
+  buildYear:           $[ format('{0:yyyy}', pipeline.startTime) ]
+  buildMonth:          $[ format('{0:MM}', pipeline.startTime) ]
+  buildDay:            $[ format('{0:dd}', pipeline.startTime) ]
+  fullDate:            $[ format('{0:yyyyMMdd}', pipeline.startTime) ]

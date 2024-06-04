@@ -1,0 +1,12 @@
+parameters:
+  destinationFolder:
+  artifactName:
+  version: 
+
+steps:
+- task: ExtractFiles@1
+  displayName: 'Extract Plan Artifact'
+  inputs:
+    archiveFilePatterns: '$(Pipeline.Workspace)/${{ parameters.artifactName }}/tfplan_${{ parameters.version }}.tgz'
+    destinationFolder: ${{ parameters.destinationFolder }}
+    cleanDestinationFolder: true

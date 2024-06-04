@@ -1,0 +1,149 @@
+parameters:
+- name: name
+  type: string
+- name: env
+  type: string
+- name: terraformDirectory
+  type: string
+- name: terraformArguments
+  type: string
+  default: ''
+- name: terraformServiceConnection
+  type: string
+- name: terraformEnvVariables
+  type: object
+  default: {}
+- name: dependsOn
+  type: object
+  default: []
+- name: pool
+  type: string
+  default: ''
+- name: enableLinting
+  type: boolean
+  default: true
+- name: releaseFromFeatureBranch
+  type: boolean
+  default: false
+- name: preBuildSteps
+  type: object
+  default: []
+- name: postBuildSteps
+  type: object
+  default: []
+
+stages:
+- stage: TerraformPlan_${{ replace(parameters.name, '-', '_') }}_${{ parameters.env }}
+  ${{ if not(eq(parameters.pool, '')) }}:
+    pool: ${{ parameters.pool }}
+  variables:
+  # Settings for terraform state are placed inside Azure Devops -> Pipelines -> Library -> name-env e.g. someapp-env
+  - group: ${{ parameters.name }}-${{ parameters.env }}
+  dependsOn: ${{ parameters.dependsOn }}
+  displayName: ${{ parameters.env }} plan
+  jobs:
+  - job: ${{ replace(parameters.name, '-', '_') }}_tfplan
+    steps: 
+    - ${{ parameters.preBuildSteps }}
+
+    - template: ../steps/debug-vars.yaml
+    - template: ../steps/getversion.yaml
+    - template: ../steps/update-build-info.yaml
+      parameters:
+        version: $(getversion.version)
+
+    - task: TerraformInstaller@1
+      name: terraformInstall
+      displayName: Terraform Install $(terraformVersion)
+      inputs:
+        terraformVersion: $(terraformVersion)
+    
+    - task: Bash@3
+      condition: ${{ eq(parameters.enableLinting, true) }}
+      name: installTflint 
+      displayName: "Install TFLint"
+      inputs:
+        targetType: inline
+        script: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          brew update
+          brew install tflint
+          tflint -v
+
+    - task: TerraformTaskV4@4
+      name: terraformInit
+      displayName: Terraform Initialize
+      env: ${{ parameters.terraformEnvVariables }}
+      inputs:
+        provider: 'azurerm'
+        workingDirectory: ${{ parameters.terraformDirectory }}
+        command: 'init'
+        backendServiceArm: ${{ parameters.terraformServiceConnection }}
+        backendAzureRmResourceGroupName: $(backendAzureRmResourceGroupName)
+        backendAzureRmStorageAccountName: $(backendAzureRmStorageAccountName)
+        backendAzureRmContainerName: $(backendAzureRmContainerName)
+        backendAzureRmKey: ${{ parameters.domain }}-${{ parameters.name }}-${{ parameters.env }}.tfstate
+
+    - task: TerraformTaskV4@4
+      condition: ${{ eq(parameters.enableLinting, true) }}
+      name: terraformValidate
+      displayName: Terraform Validate
+      inputs:
+        provider: 'azurerm'
+        workingDirectory: ${{ parameters.terraformDirectory }}
+        command: 'validate'
+      
+    - task: Bash@3
+      condition: ${{ eq(parameters.enableLinting, true) }}
+      name: runTflint
+      displayName: "TFLint"
+      inputs:
+        workingDirectory: ${{ parameters.terraformDirectory }}
+        targetType: inline
+        script: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          tflint --init
+          tflint
+
+    - task: TerraformTaskV4@4
+      name: terraformPlan
+      displayName: Terraform Plan
+      env: ${{ parameters.terraformEnvVariables }}
+      inputs:
+        provider: 'azurerm'
+        environmentServiceNameAzureRM: ${{ parameters.terraformServiceConnection }}
+        workingDirectory: ${{ parameters.terraformDirectory }}
+        command: 'plan'
+        commandOptions: '-input=false -var-file=env/${{parameters.domain }}-${{ parameters.env }}.tfvars -out $(Build.BuildNumber)_${{ parameters.env }}.tfplan ${{ parameters.terraformArguments }}' 
+
+    - template: ../steps/store-variable.yaml
+      parameters:
+        variableName: appversion
+        variableValue: $(getversion.version)
+        folder: $(Build.ArtifactStagingDirectory)
+
+    - task: ArchiveFiles@2
+      ${{ if eq(parameters.releaseFromFeatureBranch, true) }}:  
+        condition: and(succeeded(), eq(variables['terraformPlan.changesPresent'], true))
+      ${{ else }}:
+        condition: and(succeeded(), eq(variables['terraformPlan.changesPresent'], true), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+      displayName: 'Compress Plan Artifact'
+      inputs:
+        rootFolderOrFile: '${{ parameters.terraformDirectory }}'
+        includeRootFolder: false
+        archiveType: 'tar'
+        tarCompression: 'gz'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/tfplan_$(getversion.version).tgz'
+        replaceExistingArchive: true
+
+    - task: PublishPipelineArtifact@1
+      ${{ if eq(parameters.releaseFromFeatureBranch, true) }}:  
+        condition: and(succeeded(), eq(variables['terraformPlan.changesPresent'], true))
+      ${{ else }}:
+        condition: and(succeeded(), eq(variables['terraformPlan.changesPresent'], true), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+      displayName: 'Publish Plan Artifact'
+      inputs:
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: ${{ parameters.env }}_tfplan_$(System.StageAttempt)
+
+    - ${{ parameters.postBuildSteps }}
